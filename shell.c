@@ -2,6 +2,7 @@
 #define MAX_CMD_NUM 10
 #define MAX_ARG_NUM 10
 #define MAX_PATH_LEN 300
+#define MAX_PROMPT_LEN 300
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
@@ -14,6 +15,7 @@
 char cmd[CMD_MAX_LEN];
 char *cmdsplit[MAX_CMD_NUM];
 char *currentcmd[MAX_ARG_NUM+1];//last must be NULL
+char prompt[MAX_PROMPT_LEN];
 char current_working_directory[MAX_PATH_LEN];
 /*char *envp[]={"PATH=/usr/bin:/usr/local/bin",NULL};*/
 static void sigint_handler(int signo);
@@ -33,6 +35,16 @@ int parse_cmd() {
   return i;
 }
 
+int generate_prompt(char dst[]) {
+  if (getcwd(current_working_directory,MAX_PATH_LEN)) {
+    strncpy(dst,current_working_directory,MAX_PROMPT_LEN);
+    strncat(dst," >",2);
+  } else {
+    perror("getcwd error prompt");
+    return -1;
+  }
+  return 0;
+}
 
 void execute_cmd() {
   int cnt=parse_cmd();
@@ -104,7 +116,11 @@ int main() {
   //disable Ctrl+c
   signal(SIGINT,&sigint_handler);
   while (1) {
-    printf("shell>");
+    if (generate_prompt(prompt)<0) {
+      printf("Error in prompt generate!\n");
+      exit(1);
+    }
+    fputs(prompt,stdout);
     if (fgets(cmd,CMD_MAX_LEN,stdin)==NULL) break;
     /*cmd[strlen(cmd)-1]='\0';*/
     execute_cmd();
