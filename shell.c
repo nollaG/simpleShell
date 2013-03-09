@@ -28,6 +28,8 @@ char *stdout_filename;
 
 int pipefd[MAX_PROC_NUM][2];
 
+int background_job=0;
+
 
 static void sigint_handler(int signo);
 int parse_cmd();
@@ -37,6 +39,14 @@ void execute_cmd();
 //parse command from cmd to cmdsplit
 //return cmd num
 int parse_cmd() {
+  int len=strlen(cmd);
+  for (int i=len-1;i>=0;--i) {
+    if (cmd[i]=='&') {
+      background_job=1;
+      cmd[i]='\0';
+      break;
+    }
+  }
   char* pch=strtok(cmd,"|\n");
   int i=0;
   while (pch!=NULL && i<MAX_CMD_NUM) {
@@ -59,7 +69,6 @@ int generate_prompt(char dst[]) {
 
 void execute_cmd() {
   int cnt=parse_cmd();
-  int shellpid=getpid();
   stdin_filename=NULL;
   stdout_filename=NULL;
   for (int i=0;i<cnt;++i) {
@@ -163,19 +172,15 @@ void execute_cmd() {
         exit(0);
       }
     } else {
-      wait(NULL);
+      if (!background_job) {
+        int tmp=wait(NULL);
+        while (tmp!=p)
+          tmp=wait(NULL);
+      }
       if (i<cnt-1)
         close(pipefd[i][1]);
       if (i>0)
       close(pipefd[i-1][0]);
-    }
-  }
-  /*for (int i=0;i<cnt;++i)*/
-    /*wait(NULL);*/
-  if (shellpid==getpid()) {//shell proc
-    for (int i=0;i<cnt-1;++i) {
-      close(pipefd[i][0]);
-      close(pipefd[i][1]);
     }
   }
 }
@@ -196,6 +201,7 @@ int main() {
     fputs(prompt,stdout);
     if (fgets(cmd,CMD_MAX_LEN,stdin)==NULL) break;
     /*cmd[strlen(cmd)-1]='\0';*/
+    background_job=0;
     execute_cmd();
   }
   printf("\n");
