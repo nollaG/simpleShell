@@ -1,23 +1,34 @@
-#define CMD_MAX_LEN 1000
-#define MAX_CMD_NUM 10
-#define MAX_ARG_NUM 10
-#define MAX_PATH_LEN 300
-#define MAX_PROMPT_LEN 300
+#define CMD_MAX_LEN 1024
+#define MAX_CMD_NUM 16
+#define MAX_ARG_NUM 16
+#define MAX_PATH_LEN 256
+#define MAX_PROMPT_LEN 256
+#define MAX_PROC_NUM 16
+#define STDIN_FD 0
+#define STDOUT_FD 1
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/wait.h>
 #include <signal.h>
 #include <pwd.h>
+#include <fcntl.h>
 char cmd[CMD_MAX_LEN];
 char *cmdsplit[MAX_CMD_NUM];
 char *currentcmd[MAX_ARG_NUM+1];//last must be NULL
 char prompt[MAX_PROMPT_LEN];
 char current_working_directory[MAX_PATH_LEN];
-/*char *envp[]={"PATH=/usr/bin:/usr/local/bin",NULL};*/
+
+char *stdin_filename;
+char *stdout_filename;
+
+int pipefd[MAX_PROC_NUM][2];
+
+
 static void sigint_handler(int signo);
 int parse_cmd();
 void execute_cmd();
@@ -48,12 +59,31 @@ int generate_prompt(char dst[]) {
 
 void execute_cmd() {
   int cnt=parse_cmd();
+  int shellpid=getpid();
+  stdin_filename=NULL;
+  stdout_filename=NULL;
   for (int i=0;i<cnt;++i) {
     bzero(currentcmd,sizeof(currentcmd));
     char* pch=strtok(cmdsplit[i]," \n");
     if (pch==NULL) return;
     int j=0;
     while (pch!=NULL && j<MAX_ARG_NUM) {
+      if (i==0) {
+        if (!strcmp("<",pch)) {
+          pch=strtok(NULL," \n");
+          stdin_filename=pch;
+          pch=strtok(NULL," \n");
+          continue;
+        }
+      }
+      if (i==cnt-1) {
+        if (!strcmp(">",pch)) {
+          pch=strtok(NULL," \n");
+          stdout_filename=pch;
+          pch=strtok(NULL," \n");
+          continue;
+        }
+      }
       currentcmd[j++]=pch;
       pch=strtok(NULL," \n");
     }
@@ -89,6 +119,11 @@ void execute_cmd() {
       }
       continue;
     }
+    if (i<cnt-1)
+      if (pipe(pipefd[i])<0) {
+        perror("PIPE ERROR");
+        return;
+      }
     pid_t p=fork();
     if (p<0){
       perror("fork error");
@@ -96,13 +131,51 @@ void execute_cmd() {
     }
     if (p==0) { //child process
       /*printf("child process pid=%d\n",getpid());*/
+      if(i==0 && stdin_filename) {
+        int rediroutfd=open(stdin_filename,O_RDONLY);
+        if (rediroutfd<0) {
+          perror("Redirect STDIN ERROR");
+          exit(1);
+        }
+        dup2(rediroutfd,STDIN_FD); //redirect
+      }
+      if (i==cnt-1 && stdout_filename) {
+        int rediroutfd=creat(stdout_filename,0644);
+        if (rediroutfd<0) {
+          perror("Redirect STDOUT ERROR");
+          exit(1);
+        }
+        dup2(rediroutfd,STDOUT_FD); //redirect
+      }
+      if (i>0) {
+        close(STDIN_FD);
+        close(pipefd[i-1][1]);
+        dup2(pipefd[i-1][0],STDIN_FD);
+        
+      }
+      if (i<cnt-1) {
+        close(STDOUT_FD);
+        close(pipefd[i][0]);
+        dup2(pipefd[i][1],STDOUT_FD);
+      }
       if (execvp(currentcmd[0],currentcmd)<0) {
         perror(currentcmd[0]);
         exit(0);
       }
     } else {
       wait(NULL);
-      /*printf("parent Process,pid=%d\n",getpid());*/
+      if (i<cnt-1)
+        close(pipefd[i][1]);
+      if (i>0)
+      close(pipefd[i-1][0]);
+    }
+  }
+  /*for (int i=0;i<cnt;++i)*/
+    /*wait(NULL);*/
+  if (shellpid==getpid()) {//shell proc
+    for (int i=0;i<cnt-1;++i) {
+      close(pipefd[i][0]);
+      close(pipefd[i][1]);
     }
   }
 }
