@@ -39,7 +39,7 @@ void execute_cmd();
 //parse command from cmd to cmdsplit
 //return cmd num
 int parse_cmd() {
-  int len=strlen(cmd);
+  int len=strlen(cmd); //check if  there is & at the end
   for (int i=len-1;i>=0;--i) {
     if (cmd[i]=='&') {
       background_job=1;
@@ -47,6 +47,7 @@ int parse_cmd() {
       break;
     }
   }
+  //split cmd use '|'
   char* pch=strtok(cmd,"|\n");
   int i=0;
   while (pch!=NULL && i<MAX_CMD_NUM) {
@@ -56,7 +57,8 @@ int parse_cmd() {
   return i;
 }
 
-int generate_prompt(char dst[]) {
+int generate_prompt(char dst[]) { //make a prompt string to dst
+  if (dst==NULL) return -1;
   if (getcwd(current_working_directory,MAX_PATH_LEN)) {
     strncpy(dst,current_working_directory,MAX_PROMPT_LEN);
     strncat(dst," >",2);
@@ -102,9 +104,9 @@ void execute_cmd() {
     }
     if (!strcmp(currentcmd[0],"cd")) {
       if (j==2) {
-        if (currentcmd[1][0]=='/') {
+        if (currentcmd[1][0]=='/') {//absoulte path
           strncpy(current_working_directory,currentcmd[1],MAX_PATH_LEN);
-        } else {
+        } else {//relative path
           if (getcwd(current_working_directory,MAX_PATH_LEN)) {
             strncat(current_working_directory,"/",1);
             strncat(current_working_directory,currentcmd[1],MAX_PATH_LEN-strlen(current_working_directory));
@@ -112,7 +114,7 @@ void execute_cmd() {
             perror("getcwd error cd");
           }
         }
-        if (chdir(current_working_directory)<0) {
+        if (chdir(current_working_directory)<0) { //change cwd
           perror("cd");
         }
       } else if (j==1) { //if only "cd" then just go to home
@@ -130,15 +132,15 @@ void execute_cmd() {
     }
     if (i<cnt-1)
       if (pipe(pipefd[i])<0) {
-        perror("PIPE ERROR");
+        perror("pipe error");
         return;
       }
-    pid_t p=fork();
-    if (p<0){
+    pid_t childpid=fork();
+    if (childpid<0){
       perror("fork error");
       continue;
     }
-    if (p==0) { //child process
+    if (childpid==0) { //child process
       /*printf("child process pid=%d\n",getpid());*/
       if(i==0 && stdin_filename) {
         int rediroutfd=open(stdin_filename,O_RDONLY);
@@ -160,7 +162,6 @@ void execute_cmd() {
         close(STDIN_FD);
         close(pipefd[i-1][1]);
         dup2(pipefd[i-1][0],STDIN_FD);
-        
       }
       if (i<cnt-1) {
         close(STDOUT_FD);
@@ -174,7 +175,7 @@ void execute_cmd() {
     } else {
       if (!background_job) {
         int tmp=wait(NULL);
-        while (tmp!=p)
+        while (tmp!=childpid)
           tmp=wait(NULL);
       }
       if (i<cnt-1)
@@ -186,7 +187,7 @@ void execute_cmd() {
 }
 
 
-static void sigint_handler(int signo) {
+static void sigint_handler(int signo) { //disable Ctrl+c
   return;
 }
 
@@ -204,6 +205,6 @@ int main() {
     background_job=0;
     execute_cmd();
   }
-  printf("\n");
+  printf("exit\n");
   return 0;
 }
