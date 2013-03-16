@@ -159,12 +159,10 @@ void execute_cmd() {
         dup2(rediroutfd,STDOUT_FD); //redirect
       }
       if (i>0) {
-        close(STDIN_FD);
         close(pipefd[i-1][1]);
         dup2(pipefd[i-1][0],STDIN_FD);
       }
       if (i<cnt-1) {
-        close(STDOUT_FD);
         close(pipefd[i][0]);
         dup2(pipefd[i][1],STDOUT_FD);
       }
