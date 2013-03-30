@@ -1,7 +1,7 @@
 shell:shell.o
-	clang -ggdb shell.o -o shell
+	gcc shell.o -o shell
 shell.o:shell.c
-	clang -ggdb -c shell.c
+	gcc -c shell.c
 clean:
 	rm *.o shell
 .PHONY:clean
