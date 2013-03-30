@@ -8,6 +8,7 @@
 #define STDOUT_FD 1
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>

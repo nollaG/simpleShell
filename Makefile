@@ -1,7 +1,7 @@
 shell:shell.o
-	gcc shell.o -o shell
+	gcc -std=c99 shell.o -o shell
 shell.o:shell.c
-	gcc -c shell.c
+	gcc -std=c99 -c shell.c
 clean:
 	rm *.o shell
 .PHONY:clean
