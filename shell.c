@@ -107,6 +107,12 @@ void execute_cmd() {
       if (j==2) {
         if (currentcmd[1][0]=='/') {//absoulte path
           strncpy(current_working_directory,currentcmd[1],MAX_PATH_LEN);
+        } else if (currentcmd[1][0]=='~') { //home path
+          struct passwd *pwd;
+          pwd=getpwuid(getuid());
+          strncpy(current_working_directory,"/home/",MAX_PATH_LEN-strlen(current_working_directory));
+          strncat(current_working_directory,pwd->pw_name,MAX_PATH_LEN-strlen(current_working_directory));
+          strncat(current_working_directory,currentcmd[1]+1,MAX_PATH_LEN-strlen(current_working_directory));
         } else {//relative path
           if (getcwd(current_working_directory,MAX_PATH_LEN)) {
             strncat(current_working_directory,"/",1);
@@ -115,19 +121,16 @@ void execute_cmd() {
             perror("getcwd error cd");
           }
         }
-        if (chdir(current_working_directory)<0) { //change cwd
-          perror("cd");
-        }
       } else if (j==1) { //if only "cd" then just go to home
         struct passwd *pwd;
         pwd=getpwuid(getuid());
         strncpy(current_working_directory,"/home/",MAX_PATH_LEN);
         strncat(current_working_directory,pwd->pw_name,MAX_PATH_LEN);
-        if (chdir(current_working_directory)<0) {
-          perror("cd");
-        }
       } else {
         printf("Too Many Arguments\n");
+      }
+      if (chdir(current_working_directory)<0) {
+        perror("cd");
       }
       continue;
     }
