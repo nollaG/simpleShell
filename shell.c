@@ -20,6 +20,7 @@
 #include <fcntl.h>
 char cmd[CMD_MAX_LEN];
 char *cmdsplit[MAX_CMD_NUM];
+pid_t cmdpid[MAX_CMD_NUM];//pid for child thread
 char *currentcmd[MAX_ARG_NUM+1];//last must be NULL
 char prompt[MAX_PROMPT_LEN];
 char current_working_directory[MAX_PATH_LEN];
@@ -74,11 +75,13 @@ void execute_cmd() {
   int cnt=parse_cmd();
   stdin_filename=NULL;
   stdout_filename=NULL;
-  for (int i=0;i<cnt;++i) {
+  int i;
+  for (i=0;i<cnt;++i) {
     bzero(currentcmd,sizeof(currentcmd));
     char* pch=strtok(cmdsplit[i]," \n");
     if (pch==NULL) return;
     int j=0;
+    //redirect
     while (pch!=NULL && j<MAX_ARG_NUM) {
       if (i==0) {
         if (!strcmp("<",pch)) {
@@ -99,40 +102,43 @@ void execute_cmd() {
       currentcmd[j++]=pch;
       pch=strtok(NULL," \n");
     }
-    if (!strcmp(cmd,"exit")) {
-      printf("\n");
-      exit(0);
-    }
-    if (!strcmp(currentcmd[0],"cd")) {
-      if (j==2) {
-        if (currentcmd[1][0]=='/') {//absoulte path
-          strncpy(current_working_directory,currentcmd[1],MAX_PATH_LEN);
-        } else if (currentcmd[1][0]=='~') { //home path
+    //internal commend
+    if (cnt==1) {
+      if (!strcmp(cmd,"exit")) {
+        printf("\n");
+        exit(0);
+      }
+      if (!strcmp(currentcmd[0],"cd")) {
+        if (j==2) {
+          if (currentcmd[1][0]=='/') {//absoulte path
+            strncpy(current_working_directory,currentcmd[1],MAX_PATH_LEN);
+          } else if (currentcmd[1][0]=='~') { //home path
+            struct passwd *pwd;
+            pwd=getpwuid(getuid());
+            strncpy(current_working_directory,"/home/",MAX_PATH_LEN-strlen(current_working_directory));
+            strncat(current_working_directory,pwd->pw_name,MAX_PATH_LEN-strlen(current_working_directory));
+            strncat(current_working_directory,currentcmd[1]+1,MAX_PATH_LEN-strlen(current_working_directory));
+          } else {//relative path
+            if (getcwd(current_working_directory,MAX_PATH_LEN)) {
+              strncat(current_working_directory,"/",1);
+              strncat(current_working_directory,currentcmd[1],MAX_PATH_LEN-strlen(current_working_directory));
+            } else {
+              perror("getcwd error cd");
+            }
+          }
+        } else if (j==1) { //if only "cd" then just go to home
           struct passwd *pwd;
           pwd=getpwuid(getuid());
-          strncpy(current_working_directory,"/home/",MAX_PATH_LEN-strlen(current_working_directory));
-          strncat(current_working_directory,pwd->pw_name,MAX_PATH_LEN-strlen(current_working_directory));
-          strncat(current_working_directory,currentcmd[1]+1,MAX_PATH_LEN-strlen(current_working_directory));
-        } else {//relative path
-          if (getcwd(current_working_directory,MAX_PATH_LEN)) {
-            strncat(current_working_directory,"/",1);
-            strncat(current_working_directory,currentcmd[1],MAX_PATH_LEN-strlen(current_working_directory));
-          } else {
-            perror("getcwd error cd");
-          }
+          strncpy(current_working_directory,"/home/",MAX_PATH_LEN);
+          strncat(current_working_directory,pwd->pw_name,MAX_PATH_LEN);
+        } else {
+          printf("Too Many Arguments\n");
         }
-      } else if (j==1) { //if only "cd" then just go to home
-        struct passwd *pwd;
-        pwd=getpwuid(getuid());
-        strncpy(current_working_directory,"/home/",MAX_PATH_LEN);
-        strncat(current_working_directory,pwd->pw_name,MAX_PATH_LEN);
-      } else {
-        printf("Too Many Arguments\n");
+        if (chdir(current_working_directory)<0) {
+          perror("cd");
+        }
+        continue;
       }
-      if (chdir(current_working_directory)<0) {
-        perror("cd");
-      }
-      continue;
     }
     if (i<cnt-1)
       if (pipe(pipefd[i])<0) {
@@ -140,9 +146,10 @@ void execute_cmd() {
         return;
       }
     pid_t childpid=fork();
+    cmdpid[i]=childpid;
     if (childpid<0){
       perror("fork error");
-      continue;
+      break;
     }
     if (childpid==0) { //child process
       /*printf("child process pid=%d\n",getpid());*/
@@ -173,15 +180,15 @@ void execute_cmd() {
         exit(0);
       }
     } else {
-      if (!background_job) {
-        int tmp=wait(NULL);
-        while (tmp!=childpid)
-          tmp=wait(NULL);
-      }
       if (i<cnt-1)
         close(pipefd[i][1]);
       if (i>0)
       close(pipefd[i-1][0]);
+    }
+  }
+  if (!background_job) {
+    for (int j=0;j<i;++j) {
+      waitpid(cmdpid[j],NULL,0);
     }
   }
 }
