@@ -1,3 +1,7 @@
 This is a simply shell writen for Linux Kernel course.
 
 Supporting pipe ,redirect and background.
+
+Use make to compile the shell.
+
+This project is suit for some course HW.
